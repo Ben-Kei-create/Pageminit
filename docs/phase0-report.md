@@ -70,3 +70,10 @@
 | P2 画像処理中キャンセルが成功扱い | 2パス読取の各チャンクと `finish()` 前、生成後にも `Task.checkCancellation()` | `cancellationDuringImageReadLeavesNoEPUB` |
 | P2 キャンセルで終了待ちが長引く | キャンセル時もSIGTERM→2秒後SIGKILL (timeoutと共通化。PID直接killをやめ `isRunning` 確認) | `cancellationKillsProcessIgnoringSIGTERM` |
 | 補足: catch外の失敗経路 | writer初期化・生成後OCF検査を単一のcatch範囲に統合。init失敗時も `abort()`。**検査違反は成功で返さず `archiveNonCompliant` を投げて出力削除** (従来は検査結果を無視していた) | 既存+上記 |
+
+## 追加スパイク: Release + Hardened Runtime + MAS相当署名 (2026-10-25)
+- 構成: Releaseビルド (Hardened Runtime有効)。`ValidationRuntime/jre` にJRE `Contents/Home` の中身を直置き (bundle構造を避ける)。同梱Mach-O 46個を子プロセス用entitlements (`app-sandbox` + `inherit` + `cs.allow-jit`) で `--options runtime` 署名し直し、アプリ本体は `app-sandbox` + `user-selected.read-write` のみで署名。
+- 結果: `codesign --verify --deep --strict` 合格。Sandbox内のアプリが同梱JRE+EPUBCheck 5.4.0を起動し `passed errors=0 warnings=0`、Sandbox拒否ログなし。
+- **限界 (未検証のまま)**: 署名は Apple Development 証明書のみ。**Mac App Store配布用証明書でのパッケージ作成、App Store Connectの検証(Transporter等)、審査、Developer ID署名、Notarizationは未実施**。`allow-jit` がMAS審査で許容されるかも未確認。署名スクリプト化・ビルドへの組込みも未実施 (手動実行)。
+- アプリ側の `ContentView.swift` の検証用パスは `jre/bin/java` に変更済み。
+- 収益モデルは ADR-012 (買い切り・広告/IAPなし)。販売先 (MAS / Developer ID) は上記の未検証事項の結果待ち。

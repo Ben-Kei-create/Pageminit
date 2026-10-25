@@ -39,7 +39,7 @@ struct ContentView: View {
         guard let root = Bundle.main.resourceURL?.appendingPathComponent("ValidationRuntime"),
               FileManager.default.fileExists(atPath: root.path)
         else { return "検証不可: 同梱ランタイムなし" }
-        let java = root.appendingPathComponent("jre/Contents/Home/bin/java")
+        let java = root.appendingPathComponent("jre/bin/java")
         let jar = root.appendingPathComponent("epubcheck/epubcheck.jar")
         let work = FileManager.default.temporaryDirectory.appendingPathComponent("pm-val-\(UUID().uuidString)")
         do {
