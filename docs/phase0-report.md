@@ -52,7 +52,7 @@
 6. **Apple Books実機表示**: 未確認 (表紙/RTL/縦横混在)。
 7. **画像は合成PNG/JPEGのみ**。実画像(ICC/CMYK/巨大画像)・日本語ファイル名は未検証。
 8. **アプリアイコン**: 未登録 (参照画像は背景付き。1024pxマスター化が必要)。
-9. **Bundle ID**: 仮 `com.example.PageMint`。所有者確定待ち。
+9. **Bundle ID**: `com.fumiakimogi.Pagemint` に確定 (2026-10-25)。
 10. Xcodeの `PageMintTests`/UIテストターゲット、CI、ランタイム自動配置スクリプト: 未作成。
 11. 画像最適化・容量調整・取り込み・永続化・UT-008(回転): Phase 1〜3。
 
