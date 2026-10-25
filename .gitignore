@@ -1,0 +1,8 @@
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+# 検証ランタイム(JRE/EPUBCheck)はライセンス・署名確認までコミットしない (設計書 §5.2)
+Pagemint/Resources/ValidationRuntime/
