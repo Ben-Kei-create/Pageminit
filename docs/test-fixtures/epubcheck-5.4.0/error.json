@@ -1,0 +1,35 @@
+{
+ "messages": [
+  {
+   "ID": "RSC-001",
+   "severity": "ERROR",
+   "message": "ファイル \"OEBPS/nav.xhtml\" が見つかりません.",
+   "additionalLocations": 0,
+   "locations": [
+    {
+     "url": {
+      "hierarchical": true,
+      "opaque": false
+     },
+     "path": "OEBPS/nav.xhtml",
+     "line": -1,
+     "column": -1,
+     "context": null
+    }
+   ],
+   "suggestion": null
+  }
+ ],
+ "customMessageFileName": null,
+ "checker": {
+  "path": "./bad.epub",
+  "filename": "bad.epub",
+  "checkerVersion": "5.4.0",
+  "checkDate": "10-25-2026 13:55:05",
+  "elapsedTime": 2060,
+  "nFatal": 0,
+  "nError": 1,
+  "nWarning": 0,
+  "nUsage": 0
+ }
+}

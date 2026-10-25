@@ -1,0 +1,15 @@
+{
+ "messages": [],
+ "customMessageFileName": null,
+ "checker": {
+  "path": "/tmp/a5c.epub",
+  "filename": "a5c.epub",
+  "checkerVersion": "5.4.0",
+  "checkDate": "10-25-2026 13:54:50",
+  "elapsedTime": 2208,
+  "nFatal": 0,
+  "nError": 0,
+  "nWarning": 0,
+  "nUsage": 0
+ }
+}

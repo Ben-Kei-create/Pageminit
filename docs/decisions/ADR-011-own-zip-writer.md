@@ -20,4 +20,4 @@
 ## ADR-011b: OPFに `prefix="rendition:..."` を宣言しない
 設計書§9.2の例は `prefix="rendition: http://www.idpf.org/vocab/rendition/#"` を宣言しているが、
 `rendition` はEPUB 3の予約済みprefixであり宣言不要。再宣言は EPUBCheck が警告/情報を出す可能性があるため省略した。
-**EPUBCheck実行で確認できていない**ため、実行環境が整い次第、宣言あり/なしで差分を取り、結果をここへ追記する。
+EPUBCheck 5.4.0 で宣言なしのEPUBが エラー/警告0 で通ることを確認済み (宣言ありとの差分比較は未実施)。

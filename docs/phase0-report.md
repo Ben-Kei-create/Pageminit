@@ -10,7 +10,7 @@
 - 設計書のフォルダ案 `PageMintApp/` ではなく、既存テンプレートの `Pagemint/` をそのまま使用 (同期グループ)。
 
 ## 実行したテスト (すべて実行済み)
-`cd PageMintCore && swift test` → **40テスト / 4スイート合格** (macOS 27 / Xcode 27.1 / Swift 6.4)。
+`cd PageMintCore && swift test` → **43テスト / 5スイート合格** (macOS 27 / Xcode 27.1 / Swift 6.4)。
 `xcodebuild -scheme Pagemint -destination 'platform=macOS' build` → BUILD SUCCEEDED。アプリ起動 (4秒生存) を確認。
 
 | 設計書ID | 状況 |
@@ -22,28 +22,43 @@
 | UT-015 manifest↔ZIP | 合格 |
 | UT-016 mimetype | 合格 (生バイト直読み + 改竄・順序違反の否定テスト + 独立ツール `unzip -t`) |
 | UT-017 nav/spine/layout | 合格 (ltr/rtl) |
-| UT-018 EPUBCheck JSON | **偽ランナー(シェルスクリプト)でのみ合格**。実EPUBCheckのJSONでは未検証 |
+| UT-018 EPUBCheck JSON | 偽ランナー + **実EPUBCheck 5.4.0のJSON/実プロセス**で合格 |
 | IT-008 キャンセル | 生成コア単体で合格 (部分EPUBなし)。UI/ExportUseCase経由は未実装 |
 | IT-010 検証器起動失敗 | ランナー単体で合格 (`.unavailable`、合格にならない) |
 | 元画像不変 | SHA-256/mtime/ディレクトリ内容の前後比較で合格 (生成コアのみ) |
 | その他 UT/IT | Phase 1以降。未着手 |
 
+## EPUBCheck / JRE スパイク結果 (2026-10-25 追記・実施済み)
+取得物 (リポジトリには**コミットしていない**。`.gitignore` 済み):
+- EPUBCheck 5.4.0: github.com/w3c/epubcheck/releases/download/v5.4.0/epubcheck-5.4.0.zip, 33,093,170 byte, SHA-256 `33350c61038e71dfb3d45a76aed04bf5481e6d5500cb780f6e98db8bbd15a28c` (公式チェックサム未公表のため自己計測値)
+- Temurin JRE 21.0.13+9 aarch64 mac: adoptium/temurin21-binaries, 47,935,740 byte, SHA-256 `225bab0a...ec09a` (Adoptium APIの値と一致)
+
+結果:
+- スパイクCLI生成EPUB 4構成 (1枚 / 1枚+表紙 / 5枚+表紙 / 4枚+表紙+rtl) → **EPUBCheck 5.4.0 で 致命0・エラー0・警告0・情報0**。
+- `rendition` prefix省略 (ADR-011b) は**問題なし**を確認 (警告0)。
+- nav.xhtml を削除した壊れEPUB → exit 1, `RSC-001` ERROR 1件。実JSONをフィクスチャ化 (`docs/test-fixtures/epubcheck-5.4.0/`)。`line` は不明時 -1 で返るためパーサでnil扱い。JSONキー (`checker.checkerVersion/nError/nFatal`, `messages[].ID/severity/message/locations[].path`) は実出力と一致。
+- `ProcessEPUBCheckRunner` の実ランタイム end-to-end テスト (環境変数 `PAGEMINT_JAVA` / `PAGEMINT_EPUBCHECK_JAR` 指定時のみ実行) 合格。**未指定だとスキップされる**ため、CIではランタイム配置が必要。
+- **Sandbox内起動**: Sandbox有効 (user-selected rw, ネットワーク無効) のDebugビルドのアプリが、`Resources/ValidationRuntime/` の同梱JRE+EPUBCheckを `Process` で起動し検証成功 (`passed errors=0 warnings=0`)。Sandbox拒否ログなし。
+
+`swift test`: **43テスト合格** (実ランタイム指定あり)。
+
 ## 未検証・未解決 (「完了」と扱わないこと)
-1. **EPUBCheck未実行**。この環境にJavaが無い (`/usr/bin/java` はスタブ)。JRE/JARの取得は未実施 (ダウンロード許可待ち)。
-   - 完了条件「EPUBCheckで1ページサンプルが妥当」は**未達**。
-   - `EPUBCheckReportParser` のJSONスキーマは記憶ベースの暫定。実バージョンの出力で確定が必要。
-   - OPFの `rendition` prefix省略 (ADR-011b) の影響も未確認。
-2. **Java同梱・署名・Sandbox内起動・再配布ライセンス** (設計書 §10.2): 未検証。
-3. **ZIPFoundation評価**: 未実施 (ADR-011)。自前ライターの他リーダー互換はEPUBCheck/Booksで要確認。
-4. **Apple Books実機表示**: 未確認 (表紙/RTL/縦横混在)。
-5. **アプリアイコン**: 未登録。参照画像は背景付きプレゼン画像であり、本番マスター化(1024px・余白・アルファ調整)が必要。
-6. **Bundle ID**: 仮 `com.example.PageMint`。所有者確定待ち。DEVELOPMENT_TEAM は既存テンプレートの値を維持。
-7. Xcodeの `PageMintTests` / UIテストターゲット、CI、license notice: 未作成。テストは現状SwiftPM側のみ。
-8. サイズ実測・容量調整・画像最適化・取り込み・プロジェクト永続化: Phase 1〜3。
-9. `Issue`/`EPUBBuilder.modifiedAt` 等の公開API形状はPhase 1で変わり得る。
+1. **Sandbox内起動の検証条件は限定的**: Debug / Apple Development署名 / Hardened Runtimeなし / JREはAdoptium署名のまま。**Release + Hardened Runtime + Developer ID署名 + Notarization + JREの再署名(JIT等のentitlements)** は未検証。Mac App Store適合も未検証。
+2. **同梱サイズ**: ValidationRuntime は約185MB (JRE全体)。`jlink`での最小化は未実施。
+3. **ライセンス**: EPUBCheck 5.4.0 の同梱READMEは 3-Clause BSD と記載 (設計書§10.2/§20の「MIT」とは不一致 → 設計書側の訂正が必要)。
+   **ライセンス通知**: Temurin (GPLv2+Classpath Exception) と EPUBCheck依存JARの通知文書は未作成 (`docs/license-notices/` は空)。再配布条件の最終確認は未了。
+4. **aarch64のみ**: x86_64 / Universal は未対応・未検証。
+5. **ZIPFoundation評価**: 未実施 (ADR-011)。ただし自前ZIPはEPUBCheck 5.4.0と`unzip -t`で受理された。
+6. **Apple Books実機表示**: 未確認 (表紙/RTL/縦横混在)。
+7. **画像は合成PNG/JPEGのみ**。実画像(ICC/CMYK/巨大画像)・日本語ファイル名は未検証。
+8. **アプリアイコン**: 未登録 (参照画像は背景付き。1024pxマスター化が必要)。
+9. **Bundle ID**: 仮 `com.example.PageMint`。所有者確定待ち。
+10. Xcodeの `PageMintTests`/UIテストターゲット、CI、ランタイム自動配置スクリプト: 未作成。
+11. 画像最適化・容量調整・取り込み・永続化・UT-008(回転): Phase 1〜3。
 
 ## レビュー依頼ポイント (§16)
 - P0観点: `EPUBArchiveWriter` が書き込むのは `destination` のみ。`EPUBBuilder` の失敗/キャンセル時に `abort()` で削除。ソース画像は読み取りのみ。
 - `addStoredFile` はCRC算出と書き込みの2パス読み。読取中の変更は `sourceChangedDuringRead` で検出するが、その場合 `abort()` 経由でファイルを削除しているか (builderのcatch)。
+- Sandbox内スパイクはDebug署名限定 (上記)。リリース署名条件でのレビューは別途。
 - `EPUBCheckReportParser`: 食い違いを `.unavailable` に倒す設計が妥当か。EPUBCheckの終了コード仕様 (0/1以外=異常) の前提が正しいか。
 - ZIPインスペクタ自体の網羅性 (ZIP64・コメント付きEOCD・不正オフセット) は限定的。
