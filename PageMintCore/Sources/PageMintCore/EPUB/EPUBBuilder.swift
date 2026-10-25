@@ -50,6 +50,7 @@ public enum EPUBBuildError: Error, Equatable, Sendable {
     case invalidMetadata([String])
     case invalidImageSize(String)
     case tooManyPages(Int)
+    case archiveNonCompliant([String])
 }
 
 /// 画像1点=1ページのEPUB 3 Fixed Layoutを生成する (設計書 §9)。
@@ -74,8 +75,10 @@ public struct EPUBBuilder: Sendable {
         var issues = metaIssues.filter { $0.severity == .warning }
         issues += qualityIssues(for: input)
 
-        let writer = try EPUBArchiveWriter(destination: destination, timestamp: input.modifiedAt)
+        var writer: EPUBArchiveWriter?
         do {
+            writer = try EPUBArchiveWriter(destination: destination, timestamp: input.modifiedAt)
+            guard let writer else { throw ArchiveError.closed }
             try Task.checkCancellation()
             try writer.addEntry(path: "META-INF/container.xml", data: Data(Self.containerXML.utf8), compression: .deflate)
             try writer.addEntry(path: "OEBPS/package.opf", data: Data(try packageOPF(input).utf8), compression: .deflate)
@@ -103,15 +106,22 @@ public struct EPUBBuilder: Sendable {
                     path: "OEBPS/images/page-\(Self.pageNumber(i)).\(page.kind.fileExtension)", from: page.fileURL)
             }
             try writer.finish()
+            try Task.checkCancellation()
+
+            // 生成後の自前OCF検査。違反があれば成功として返さず、出力を残さない。
+            let inspection = try EPUBArchiveInspector.inspect(url: destination)
+            guard inspection.isCompliant else {
+                throw EPUBBuildError.archiveNonCompliant(inspection.violations.map(\.code))
+            }
+            let attrs = try FileManager.default.attributesOfItem(atPath: destination.path)
+            let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+            return EPUBBuildResult(issues: issues, entryPaths: inspection.entries.map(\.name), byteCount: size)
         } catch {
-            writer.abort()  // 書きかけのEPUBを残さない (US-07)
+            // 全失敗経路(初期化・生成・検査・キャンセル)で書きかけのEPUBを残さない (US-07)
+            writer?.abort()
+            try? FileManager.default.removeItem(at: destination)
             throw error
         }
-
-        let inspection = try EPUBArchiveInspector.inspect(url: destination)
-        let attrs = try FileManager.default.attributesOfItem(atPath: destination.path)
-        let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
-        return EPUBBuildResult(issues: issues, entryPaths: inspection.entries.map(\.name), byteCount: size)
     }
 
     // MARK: Documents

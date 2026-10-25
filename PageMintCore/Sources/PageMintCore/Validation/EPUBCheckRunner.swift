@@ -107,15 +107,22 @@ public struct ProcessEPUBCheckRunner: EPUBValidating {
         func cancel() {
             lock.lock(); defer { lock.unlock() }
             cancelled = true
-            if process.isRunning { process.terminate() }
+            terminateThenKill()
         }
         func timeout() {
             lock.lock(); defer { lock.unlock() }
             guard process.isRunning else { return }
             timedOut = true
+            terminateThenKill()
+        }
+        /// SIGTERM後も生きていれば2秒後にSIGKILL (SIGTERMを無視する子でも待機が長引かない)。lock保持中に呼ぶこと。
+        private func terminateThenKill() {
+            guard process.isRunning else { return }
             process.terminate()
-            let pid = process.processIdentifier
-            DispatchQueue.global().asyncAfter(deadline: .now() + 2) { kill(pid, SIGKILL) }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 2) { [self] in
+                lock.lock(); defer { lock.unlock() }
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            }
         }
     }
 
@@ -186,17 +193,23 @@ public struct ProcessEPUBCheckRunner: EPUBValidating {
 /// 想定外の形・件数と終了コードの矛盾は `.unavailable` に倒し、偽の合格を出さない。
 public enum EPUBCheckReportParser {
     public static func parse(json raw: Data, exitCode: Int32) -> ValidationReport {
+        // 必須項目の欠落・型不正はすべて .unavailable (偽の合格を出さない)
         guard let root = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any],
-              let rawMessages = root["messages"] as? [[String: Any]]
-        else { return .unavailable("検証レポートのJSONを解釈できません", raw: raw) }
-
-        let checker = root["checker"] as? [String: Any]
-        let version = checker?["checkerVersion"] as? String
+              let rawMessages = root["messages"] as? [[String: Any]],
+              let checker = root["checker"] as? [String: Any],
+              let nError = checker["nError"] as? Int,
+              let nFatal = checker["nFatal"] as? Int
+        else { return .unavailable("検証レポートのJSONを解釈できません(必須項目の欠落または型不正)", raw: raw) }
+        let nWarning = checker["nWarning"] as? Int
+        if checker["nWarning"] != nil, nWarning == nil {
+            return .unavailable("検証レポートの nWarning の型が不正です", raw: raw)
+        }
+        let version = checker["checkerVersion"] as? String
 
         var messages: [ValidationMessage] = []
         for m in rawMessages {
-            guard let sevRaw = (m["severity"] as? String)?.uppercased() else {
-                return .unavailable("severity のないメッセージがあります", raw: raw)
+            guard let sevRaw = (m["severity"] as? String)?.uppercased(), m["ID"] is String else {
+                return .unavailable("ID または severity のないメッセージがあります", raw: raw)
             }
             let severity: Severity
             switch sevRaw {
@@ -218,8 +231,8 @@ public enum EPUBCheckReportParser {
         let errors = messages.filter { $0.severity == .error || $0.severity == .fatal }.count
         let warnings = messages.filter { $0.severity == .warning }.count
 
-        // checker の集計値がある場合は messages と突き合わせる。食い違えば信用しない。
-        if let c = checker, let nE = c["nError"] as? Int, let nF = c["nFatal"] as? Int, nE + nF != errors {
+        // checker の集計値と messages を突き合わせる。食い違えば信用しない。
+        if nError + nFatal != errors || (nWarning != nil && nWarning! != warnings) {
             return .unavailable("検証レポートの集計とメッセージ件数が一致しません", raw: raw)
         }
 

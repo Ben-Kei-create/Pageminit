@@ -193,4 +193,23 @@ struct FailureRecoveryTests {
         }
         #expect(!FileManager.default.fileExists(atPath: out.path))
     }
+
+    // レビュー指摘 P2: 画像の読み取り中にキャンセルされたら成功で返さず、出力も残さない
+    @Test func cancellationDuringImageReadLeavesNoEPUB() async throws {
+        let fx = try TestSupport.makeFixture(pages: 1)
+        let big = fx.dir.appendingPathComponent("big.png")
+        let h = try { FileManager.default.createFile(atPath: big.path, contents: nil); return try FileHandle(forWritingTo: big) }()
+        try h.truncate(atOffset: 192 << 20)   // 192MBのスパースファイル (CRC走査に時間がかかる)
+        try h.close()
+        let asset = EPUBImageAsset(fileURL: big, kind: .png, pixelWidth: 100, pixelHeight: 100)
+        let out = fx.dir.appendingPathComponent("mid.epub")
+        let input = EPUBBookInput(metadata: BookMetadata(title: "T"), cover: nil, pages: fx.pages + [asset])
+        let task = Task.detached { try EPUBBuilder().build(input, to: out) }
+        // 生成が始まり、巨大画像の走査に入るのを待ってからキャンセル
+        while !FileManager.default.fileExists(atPath: out.path) { try await Task.sleep(for: .milliseconds(2)) }
+        try await Task.sleep(for: .milliseconds(100))
+        task.cancel()
+        await #expect(throws: CancellationError.self) { _ = try await task.value }
+        #expect(!FileManager.default.fileExists(atPath: out.path))
+    }
 }

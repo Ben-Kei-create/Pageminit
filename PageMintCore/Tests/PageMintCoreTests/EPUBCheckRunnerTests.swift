@@ -135,4 +135,35 @@ struct EPUBCheckRunnerTests {
         _ = await r.validate(epubURL: epub)
         #expect(try FileManager.default.contentsOfDirectory(atPath: r.workDirectory.path).isEmpty)
     }
+
+    // レビュー指摘 P1: 必須項目の欠落・型不正は合格にならない
+    @Test(arguments: [
+        #"{"messages":[]}"#,
+        #"{"messages":[],"checker":{}}"#,
+        #"{"messages":[],"checker":{"nError":0}}"#,
+        #"{"messages":[],"checker":{"nError":"0","nFatal":0}}"#,
+        #"{"messages":[],"checker":{"nError":0,"nFatal":0,"nWarning":"x"}}"#,
+        #"{"messages":[],"checker":{"nError":0,"nFatal":0,"nWarning":2}}"#,
+        #"{"checker":{"nError":0,"nFatal":0}}"#,
+        #"{"messages":[{"severity":"WARNING"}],"checker":{"nError":0,"nFatal":0}}"#,
+        #"[]"#,
+    ])
+    func incompleteJSONIsNeverPass(_ json: String) {
+        let r = EPUBCheckReportParser.parse(json: Data(json.utf8), exitCode: 0)
+        guard case .unavailable = r.status else { Issue.record("expected unavailable for \(json)"); return }
+    }
+
+    // レビュー指摘 P2: SIGTERMを無視する検証器もキャンセルで速やかに終了する
+    @Test func cancellationKillsProcessIgnoringSIGTERM() async throws {
+        let (r0, _, epub) = try fakeJava(body: "trap '' TERM\nwhile true; do sleep 1; done")
+        let r = ProcessEPUBCheckRunner(
+            executableURL: r0.executableURL, leadingArguments: [], workDirectory: r0.workDirectory, timeout: 120)
+        let start = Date()
+        let task = Task { await r.validate(epubURL: epub) }
+        try await Task.sleep(for: .seconds(1))
+        task.cancel()
+        let rep = await task.value
+        #expect(Date().timeIntervalSince(start) < 15)
+        guard case .unavailable = rep.status else { Issue.record("expected unavailable"); return }
+    }
 }

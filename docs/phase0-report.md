@@ -10,7 +10,7 @@
 - 設計書のフォルダ案 `PageMintApp/` ではなく、既存テンプレートの `Pagemint/` をそのまま使用 (同期グループ)。
 
 ## 実行したテスト (すべて実行済み)
-`cd PageMintCore && swift test` → **43テスト / 5スイート合格** (macOS 27 / Xcode 27.1 / Swift 6.4)。
+`cd PageMintCore && swift test` → **46テスト / 5スイート合格** (macOS 27 / Xcode 27.1 / Swift 6.4)。
 `xcodebuild -scheme Pagemint -destination 'platform=macOS' build` → BUILD SUCCEEDED。アプリ起動 (4秒生存) を確認。
 
 | 設計書ID | 状況 |
@@ -40,7 +40,7 @@
 - `ProcessEPUBCheckRunner` の実ランタイム end-to-end テスト (環境変数 `PAGEMINT_JAVA` / `PAGEMINT_EPUBCHECK_JAR` 指定時のみ実行) 合格。**未指定だとスキップされる**ため、CIではランタイム配置が必要。
 - **Sandbox内起動**: Sandbox有効 (user-selected rw, ネットワーク無効) のDebugビルドのアプリが、`Resources/ValidationRuntime/` の同梱JRE+EPUBCheckを `Process` で起動し検証成功 (`passed errors=0 warnings=0`)。Sandbox拒否ログなし。
 
-`swift test`: **43テスト合格** (実ランタイム指定あり)。
+`swift test`: **46テスト合格** (実ランタイム指定あり)。
 
 ## 未検証・未解決 (「完了」と扱わないこと)
 1. **Sandbox内起動の検証条件は限定的**: Debug / Apple Development署名 / Hardened Runtimeなし / JREはAdoptium署名のまま。**Release + Hardened Runtime + Developer ID署名 + Notarization + JREの再署名(JIT等のentitlements)** は未検証。Mac App Store適合も未検証。
@@ -62,3 +62,11 @@
 - Sandbox内スパイクはDebug署名限定 (上記)。リリース署名条件でのレビューは別途。
 - `EPUBCheckReportParser`: 食い違いを `.unavailable` に倒す設計が妥当か。EPUBCheckの終了コード仕様 (0/1以外=異常) の前提が正しいか。
 - ZIPインスペクタ自体の網羅性 (ZIP64・コメント付きEOCD・不正オフセット) は限定的。
+
+## レビュー指摘対応 (Codex Phase 0 レビュー: P1×1, P2×2)
+| 指摘 | 対応 | 回帰テスト (修正前コードで失敗を確認済み) |
+|---|---|---|
+| P1 不完全JSONが合格になる | `checker.nError/nFatal` と `messages` を必須化。型不正・欠落・`nWarning`不一致・ID/severity欠落は `.unavailable` | `incompleteJSONIsNeverPass` (9パターン) |
+| P2 画像処理中キャンセルが成功扱い | 2パス読取の各チャンクと `finish()` 前、生成後にも `Task.checkCancellation()` | `cancellationDuringImageReadLeavesNoEPUB` |
+| P2 キャンセルで終了待ちが長引く | キャンセル時もSIGTERM→2秒後SIGKILL (timeoutと共通化。PID直接killをやめ `isRunning` 確認) | `cancellationKillsProcessIgnoringSIGTERM` |
+| 補足: catch外の失敗経路 | writer初期化・生成後OCF検査を単一のcatch範囲に統合。init失敗時も `abort()`。**検査違反は成功で返さず `archiveNonCompliant` を投げて出力削除** (従来は検査結果を無視していた) | 既存+上記 |

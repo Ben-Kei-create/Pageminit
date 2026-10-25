@@ -57,9 +57,14 @@ public final class EPUBArchiveWriter {
         } catch {
             throw ArchiveError.io("cannot open \(destination.lastPathComponent): \(error.localizedDescription)")
         }
-        try writeEntry(
-            name: "mimetype", data: Self.mimetypeContent, method: .stored,
-            versionNeeded: 10, markUTF8: false)
+        do {
+            try writeEntry(
+                name: "mimetype", data: Self.mimetypeContent, method: .stored,
+                versionNeeded: 10, markUTF8: false)
+        } catch {
+            abort()
+            throw error
+        }
     }
 
     deinit { try? handle?.close() }
@@ -83,6 +88,7 @@ public final class EPUBArchiveWriter {
         var hasher = CRC32Hasher()
         var size: UInt64 = 0
         while let chunk = try reader.read(upToCount: 1 << 20), !chunk.isEmpty {
+            try Task.checkCancellation()
             hasher.update(chunk)
             size += UInt64(chunk.count)
         }
@@ -96,6 +102,7 @@ public final class EPUBArchiveWriter {
         var copied: UInt64 = 0
         var verify = CRC32Hasher()
         while let chunk = try reader.read(upToCount: 1 << 20), !chunk.isEmpty {
+            try Task.checkCancellation()
             verify.update(chunk)
             copied += UInt64(chunk.count)
             try write(chunk)
@@ -110,6 +117,7 @@ public final class EPUBArchiveWriter {
     /// セントラルディレクトリとEOCDを書いて閉じる。
     public func finish() throws {
         guard handle != nil else { throw ArchiveError.closed }
+        try Task.checkCancellation()
         guard records.count <= Int(UInt16.max) else { throw ArchiveError.tooManyEntries }
         let cdStart = offset
         var cd = Data()
